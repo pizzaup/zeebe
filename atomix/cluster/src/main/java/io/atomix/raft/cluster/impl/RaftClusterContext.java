@@ -121,10 +121,6 @@ public final class RaftClusterContext implements RaftCluster, AutoCloseable {
     if (isOnBoostrapCluster) {
       member.setType(Type.ACTIVE);
       createInitialConfig(cluster);
-    } else if (member.getType() == Type.BOOTSTRAP) {
-      member.setType(
-          Type.ACTIVE); // bootstrap is deprecated, but might be persisted on previous started
-      // cluster
     }
 
     raft.getThreadContext()
@@ -132,16 +128,6 @@ public final class RaftClusterContext implements RaftCluster, AutoCloseable {
             () -> {
               // Transition the server to the appropriate state for the local member type.
               raft.transition(member.getType());
-              if (member.getType() == Type.BOOTSTRAP) {
-                // RaftMember.Type.BOOTSTRAP is deprecated, but might be persisted on a previous
-                // started cluster
-                member.setType(Type.ACTIVE);
-              }
-
-              if (isOnBoostrapCluster) {
-                // commit configuration and transition
-                commit();
-              }
               completeBootstrapFuture();
             });
 
