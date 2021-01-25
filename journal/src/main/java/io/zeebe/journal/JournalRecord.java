@@ -11,10 +11,15 @@ public interface JournalRecord {
    */
   long index();
 
+  /**
+   * application sequence number for the record
+   *
+   * @return
+   */
   long asqn();
 
   /**
-   * Checksum of the data
+   * checksum of the data
    *
    * @return
    */

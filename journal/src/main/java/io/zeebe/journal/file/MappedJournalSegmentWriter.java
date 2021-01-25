@@ -17,7 +17,6 @@
 package io.zeebe.journal.file;
 
 import io.zeebe.journal.JournalRecord;
-import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.zip.CRC32;
@@ -26,8 +25,6 @@ import org.agrona.IoUtil;
 
 /**
  * Segment writer.
- *
- * <p>The format of an entry in the log is as follows: TODO
  */
 class MappedJournalSegmentWriter {
 
@@ -77,55 +74,39 @@ class MappedJournalSegmentWriter {
   }
 
   public JournalRecord append(final long asqn, final DirectBuffer data) {
-    // TODO: Use asqn
     // Store the entry index.
     final long index = getNextIndex();
-
-    // Serialize the entry.
-    final int position = buffer.position();
-    if (position + Integer.BYTES + Integer.BYTES > buffer.limit()) {
-      throw new BufferOverflowException();
-    }
-
-    buffer.position(position + Integer.BYTES + Integer.BYTES);
-
     final int length = data.capacity();
+
     // If the entry length exceeds the maximum entry size then throw an exception.
     if (length > maxEntrySize) {
-      // Just reset the buffer. There's no need to zero the bytes since we haven't written the
-      // length or checksum.
-      buffer.position(position);
       throw new StorageException.TooLarge(
           "Entry size " + length + " exceeds maximum allowed bytes (" + maxEntrySize + ")");
     }
 
-    buffer.putInt(data.capacity());
-    data.getBytes(0, buffer, data.capacity());
-
-    // Compute the checksum for the entry.
-    buffer.position(position + Integer.BYTES + Integer.BYTES);
-    final long checksum = computeChecksum(length);
-
-    // Create a single byte[] in memory for the entire entry and write it as a batch to the
-    // underlying buffer.
-    buffer.position(position);
-    buffer.putInt(length);
-    buffer.putInt((int) checksum);
-    buffer.position(position + Integer.BYTES + Integer.BYTES + length);
-
     // Update the last entry with the correct index/term/length.
-    final JournalRecord indexedEntry = new JournalRecordImpl(buffer, position);
-    lastEntry = indexedEntry;
-    this.index.index(lastEntry, position);
-    return indexedEntry;
+    final JournalRecordImpl record = new JournalRecordImpl(index, asqn, -1, data);
+    final int recordPosition = buffer.position();
+
+    // write record
+    record.writeTo(buffer);
+    // write checksum
+    buffer.position(recordPosition);
+    record.writeChecksum(buffer, this::computeChecksum);
+    // update position
+    buffer.position(recordPosition + record.size());
+    lastEntry = new JournalRecordImpl(buffer, recordPosition);
+    this.index.index(lastEntry, recordPosition);
+    buffer.position(recordPosition);
+    return  lastEntry;
   }
 
-  private long computeChecksum(final int length) {
+  private int computeChecksum(final ByteBuffer buffer, final int length) {
     final ByteBuffer slice = buffer.slice();
     slice.limit(length);
     crc32.reset();
     crc32.update(slice);
-    return crc32.getValue();
+    return (int) crc32.getValue();
   }
 
   public void append(final JournalRecord record) {
@@ -136,11 +117,13 @@ class MappedJournalSegmentWriter {
       throw new IndexOutOfBoundsException("Entry index is not sequential");
     }
 
-    // TODO:
-    // append(record)
+    // TODO: Validate checksum
+    new JournalRecordImpl(record.index(), record.asqn(), record.checksum(), record.data())
+        .writeTo(buffer);
   }
 
   private void reset(final long index) {
+    buffer.position(JournalSegmentDescriptor.BYTES);
     // TODO
   }
 

@@ -1,5 +1,7 @@
 package io.zeebe.journal.file;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.nio.file.Path;
 import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -23,6 +25,13 @@ public class SegmentedJournalTest {
   public void shouldAppendData() {
     final DirectBuffer data = new UnsafeBuffer();
     data.wrap(ENTRY);
-    final var record  = journal.append(1, data);
+    final var recordAppended = journal.append(1, data);
+    assertThat(recordAppended.index()).isEqualTo(1);
+    journal.flush();
+
+    final var recordRead = journal.openReader().next();
+    assertThat(recordAppended.index()).isEqualTo(recordRead.index());
+    assertThat(recordAppended.asqn()).isEqualTo(recordRead.asqn());
+    assertThat(recordAppended.checksum()).isEqualTo(recordRead.checksum());
   }
 }

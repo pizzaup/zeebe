@@ -18,17 +18,12 @@ package io.zeebe.journal.file;
 
 import io.zeebe.journal.JournalReader;
 import io.zeebe.journal.JournalRecord;
-import java.nio.BufferUnderflowException;
-import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel.MapMode;
 import java.util.NoSuchElementException;
-import java.util.zip.CRC32;
 import org.agrona.IoUtil;
 
-/**
- * Log segment reader.
- */
+/** Log segment reader. */
 class MappedJournalSegmentReader implements JournalReader {
   private final MappedByteBuffer buffer;
   private final int maxEntrySize;
@@ -128,13 +123,13 @@ class MappedJournalSegmentReader implements JournalReader {
     return false;
   }
 
-  long getNextIndex() {
-    return currentEntry == null ? segment.index() : currentEntry.index() + 1;
-  }
-
   public void close() {
     IoUtil.unmap(buffer);
     segment.onReaderClosed(this);
+  }
+
+  long getNextIndex() {
+    return currentEntry == null ? segment.index() : currentEntry.index() + 1;
   }
 
   /** Reads the next entry in the segment. */
@@ -142,41 +137,15 @@ class MappedJournalSegmentReader implements JournalReader {
     // Compute the index of the next entry in the segment.
     final long index = getNextIndex();
 
-    // Mark the buffer so it can be reset if necessary.
-    buffer.mark();
+    final var nextRecordPosition = buffer.position();
 
     try {
-      // Read the length of the entry.
-      final int length = buffer.getInt();
-
-      // If the buffer length is zero then return.
-      if (length <= 0 || length > maxEntrySize) {
-        buffer.reset();
-        nextEntry = null;
-        return;
-      }
-
-      // Read the checksum of the entry.
-      final long checksum = buffer.getInt() & 0xFFFFFFFFL;
-
-      // Compute the checksum for the entry bytes.
-      final CRC32 crc32 = new CRC32();
-      final ByteBuffer slice = buffer.slice();
-      slice.limit(length);
-      crc32.update(slice);
-
-      // If the stored checksum equals the computed checksum, return the entry.
-      if (checksum == crc32.getValue()) {
-        slice.rewind();
-        nextEntry = new JournalRecordImpl(buffer, buffer.position());
-        buffer.position(buffer.position() + length);
-      } else {
-        buffer.reset();
-        nextEntry = null;
-      }
-    } catch (final BufferUnderflowException e) {
-      buffer.reset();
-      nextEntry = null;
+      final JournalRecordImpl record = new JournalRecordImpl(buffer, buffer.position());
+      buffer.position(record.size());
+      nextEntry = record;
+    } catch (final Exception e) {
+      buffer.position(nextRecordPosition);
+      throw e;
     }
   }
 
