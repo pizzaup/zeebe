@@ -14,6 +14,7 @@ import io.zeebe.db.ZeebeDbFactory;
 import io.zeebe.db.impl.DefaultColumnFamily;
 import io.zeebe.util.ByteValue;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Properties;
 import org.junit.Rule;
 import org.junit.Test;
@@ -78,16 +79,23 @@ public final class ZeebeRocksDbFactoryTest {
             ZeebeRocksDbFactory.newFactory(DefaultColumnFamily.class, customProperties);
 
     // when
-    final var defaults = factoryWithDefaults.createColumnFamilyOptions();
-    final var customOptions = factoryWithCustomOptions.createColumnFamilyOptions();
+    final var defaults = factoryWithDefaults.createColumnFamilyOptions(new ArrayList<>());
+    final var customOptions = factoryWithCustomOptions.createColumnFamilyOptions(new ArrayList<>());
 
     // then
     assertThat(defaults)
-        .extracting(ColumnFamilyOptions::writeBufferSize, ColumnFamilyOptions::compactionPriority)
-        .containsExactly(ByteValue.ofMegabytes(64), CompactionPriority.OldestSmallestSeqFirst);
+        .extracting(
+            ColumnFamilyOptions::writeBufferSize,
+            ColumnFamilyOptions::compactionPriority,
+            ColumnFamilyOptions::numLevels)
+        .containsExactly(50704475L, CompactionPriority.OldestSmallestSeqFirst, 4);
 
+    // user cfg will only be set and all other is rocksdb default
     assertThat(customOptions)
-        .extracting(ColumnFamilyOptions::writeBufferSize, ColumnFamilyOptions::compactionPriority)
-        .containsExactly(ByteValue.ofMegabytes(16), CompactionPriority.ByCompensatedSize);
+        .extracting(
+            ColumnFamilyOptions::writeBufferSize,
+            ColumnFamilyOptions::compactionPriority,
+            ColumnFamilyOptions::numLevels)
+        .containsExactly(ByteValue.ofMegabytes(16), CompactionPriority.ByCompensatedSize, 7);
   }
 }
