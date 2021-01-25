@@ -50,27 +50,30 @@ public class SegmentedJournal implements Journal {
   private final File directory;
   private final int maxSegmentSize;
   private final int maxEntrySize;
-  private volatile long commitIndex;
   private final NavigableMap<Long, JournalSegment> segments = new ConcurrentSkipListMap<>();
   private final Collection<SegmentedJournalReader> readers = Sets.newConcurrentHashSet();
   private volatile JournalSegment currentSegment;
   private volatile boolean open = true;
   private final long minFreeDiskSpace;
-  private JournalIndex journalIndex;
+  private final JournalIndex journalIndex;
+  private final SegmentedJournalWriter writer;
 
   public SegmentedJournal(
       final String name,
       final File directory,
       final int maxSegmentSize,
       final int maxEntrySize,
-      final long minFreeSpace) {
+      final long minFreeSpace,
+      final JournalIndex journalIndex) {
     this.name = checkNotNull(name, "name cannot be null");
     this.directory = checkNotNull(directory, "directory cannot be null");
     this.maxSegmentSize = maxSegmentSize;
     this.maxEntrySize = maxEntrySize;
     journalMetrics = new JournalMetrics(name);
     minFreeDiskSpace = minFreeSpace;
+    this.journalIndex = journalIndex;
     open();
+    writer = new SegmentedJournalWriter(this);
   }
 
   /**
@@ -84,38 +87,67 @@ public class SegmentedJournal implements Journal {
 
   @Override
   public JournalRecord append(final long applicationSqNum, final DirectBuffer data) {
-    return null;
+    return writer.append(applicationSqNum, data);
   }
 
   @Override
-  public void append(final JournalRecord record) throws Exception {}
+  public void append(final JournalRecord record) throws Exception {
+    writer.append(record);
+  }
 
   @Override
-  public void deleteAfter(final long indexExclusive) {}
+  public void deleteAfter(final long indexExclusive) {
+    writer.deleteAfter(indexExclusive);
+  }
 
   @Override
-  public void deleteUntil(final long indexExclusive) {}
+  public void deleteUntil(final long index) {
+    final Map.Entry<Long, JournalSegment> segmentEntry = segments.floorEntry(index);
+    if (segmentEntry != null) {
+      final SortedMap<Long, JournalSegment> compactSegments =
+          segments.headMap(segmentEntry.getValue().index());
+      if (!compactSegments.isEmpty()) {
+        log.debug("{} - Compacting {} segment(s)", name, compactSegments.size());
+        for (final JournalSegment segment : compactSegments.values()) {
+          log.trace("Deleting segment: {}", segment);
+          segment.compactIndex(index);
+          segment.close();
+          segment.delete();
+          journalMetrics.decSegmentCount();
+        }
+        compactSegments.clear();
+      }
+    }
+  }
 
   @Override
-  public void reset(final long nextIndex) {}
+  public void reset(final long nextIndex) {
+    writer.reset(nextIndex);
+  }
 
   @Override
   public long getLastIndex() {
-    return 0;
+    return writer.getLastIndex();
   }
 
   @Override
   public long getFirstIndex() {
-    return 0;
+    if (!isEmpty()) {
+      return segments.firstEntry().getValue().index();
+    } else {
+      return 0;
+    }
   }
 
   @Override
   public boolean isEmpty() {
-    return false;
+    return false; // TODO:
   }
 
   @Override
-  public void flush() {}
+  public void flush() {
+    writer.flush();
+  }
 
   /**
    * Opens a new Raft log reader.
@@ -392,7 +424,7 @@ public class SegmentedJournal implements Journal {
    */
   protected JournalSegment newSegment(
       final JournalSegmentFile segmentFile, final JournalSegmentDescriptor descriptor) {
-    return new JournalSegment(segmentFile, descriptor, maxEntrySize);
+    return new JournalSegment(segmentFile, descriptor, maxEntrySize, journalIndex);
   }
 
   /** Loads a segment. */
@@ -484,47 +516,40 @@ public class SegmentedJournal implements Journal {
     return segments.values();
   }
 
+  public void closeReader(final SegmentedJournalReader segmentedJournalReader) {
+    readers.remove(segmentedJournalReader);
+  }
+
   /**
-   * Compacts the journal up to the given index.
+   * Resets journal readers to the given head.
    *
-   * <p>The semantics of compaction are not specified by this interface.
-   *
-   * @param index The index up to which to compact the journal.
+   * @param index The index at which to reset readers.
    */
-  public void compact(final long index) {
-    final Map.Entry<Long, JournalSegment> segmentEntry = segments.floorEntry(index);
-    if (segmentEntry != null) {
-      final SortedMap<Long, JournalSegment> compactSegments =
-          segments.headMap(segmentEntry.getValue().index());
-      if (!compactSegments.isEmpty()) {
-        log.debug("{} - Compacting {} segment(s)", name, compactSegments.size());
-        for (final JournalSegment segment : compactSegments.values()) {
-          log.trace("Deleting segment: {}", segment);
-          segment.compactIndex(index);
-          segment.close();
-          segment.delete();
-          journalMetrics.decSegmentCount();
-        }
-        compactSegments.clear();
+  void resetHead(final long index) {
+    for (final SegmentedJournalReader reader : readers) {
+      if (reader.getNextIndex() < index) {
+        reader.seek(index);
       }
     }
   }
 
   /**
-   * Returns the Raft log commit index.
+   * Resets journal readers to the given tail.
    *
-   * @return The Raft log commit index.
+   * @param index The index at which to reset readers.
    */
-  long getCommitIndex() {
-    return commitIndex;
+  void resetTail(final long index) {
+    for (final SegmentedJournalReader reader : readers) {
+      if (reader.getNextIndex() >= index) {
+        reader.seek(index);
+      } else {
+        // This is not thread safe https://github.com/zeebe-io/zeebe/issues/4198
+        reader.seek(reader.getNextIndex());
+      }
+    }
   }
 
-  /**
-   * Commits entries up to the given index.
-   *
-   * @param index The index up to which to commit entries.
-   */
-  void setCommitIndex(final long index) {
-    commitIndex = index;
+  public JournalMetrics getJournalMetrics() {
+    return journalMetrics;
   }
 }

@@ -190,7 +190,6 @@ public final class JournalSegmentDescriptor {
     buffer.putLong(id);
     buffer.putLong(index);
     buffer.putInt(maxSegmentSize);
-    buffer.putInt(maxEntries);
     buffer.putLong(updated);
     buffer.put(locked ? (byte) 1 : (byte) 0);
     return this;

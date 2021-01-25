@@ -28,8 +28,6 @@ import org.agrona.IoUtil;
 
 /**
  * Log segment reader.
- *
- * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
 class MappedJournalSegmentReader implements JournalReader {
   private final MappedByteBuffer buffer;
@@ -51,6 +49,14 @@ class MappedJournalSegmentReader implements JournalReader {
         IoUtil.mapExistingFile(
             file.file(), MapMode.READ_ONLY, file.name(), 0, segment.descriptor().maxSegmentSize());
     reset();
+  }
+
+  public JournalRecord getCurrentEntry() {
+    return currentEntry;
+  }
+
+  public JournalRecord getNextEntry() {
+    return nextEntry;
   }
 
   @Override
@@ -95,7 +101,7 @@ class MappedJournalSegmentReader implements JournalReader {
 
     reset();
 
-    final int position = this.index.lookup(index - 1);
+    final var position = this.index.lookup(index - 1);
     if (position != null && position.index() >= firstIndex && position.index() <= lastIndex) {
       currentEntry = null;
       buffer.position(position.position());
@@ -107,6 +113,8 @@ class MappedJournalSegmentReader implements JournalReader {
     while (getNextIndex() < index && hasNext()) {
       next();
     }
+
+    return nextEntry != null & nextEntry.index() == index;
   }
 
   @Override
@@ -120,7 +128,7 @@ class MappedJournalSegmentReader implements JournalReader {
     return false;
   }
 
-  private long getNextIndex() {
+  long getNextIndex() {
     return currentEntry == null ? segment.index() : currentEntry.index() + 1;
   }
 
@@ -170,5 +178,9 @@ class MappedJournalSegmentReader implements JournalReader {
       buffer.reset();
       nextEntry = null;
     }
+  }
+
+  long getCurrentIndex() {
+    return currentEntry != null ? currentEntry.index() : 0;
   }
 }

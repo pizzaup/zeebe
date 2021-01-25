@@ -14,6 +14,11 @@ public class JournalRecordImpl implements JournalRecord {
   }
 
   @Override
+  public long asqn() {
+    return 0;
+  }
+
+  @Override
   public int checksum() {
     return 0;
   }

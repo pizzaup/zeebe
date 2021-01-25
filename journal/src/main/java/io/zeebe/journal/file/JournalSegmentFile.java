@@ -18,7 +18,6 @@ package io.zeebe.journal.file;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
-import io.atomix.storage.StorageException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;

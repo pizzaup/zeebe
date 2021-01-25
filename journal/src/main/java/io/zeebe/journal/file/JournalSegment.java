@@ -16,7 +16,13 @@
  */
 package io.zeebe.journal.file;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkState;
+
+import com.google.common.collect.Sets;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Set;
 
 /**
  * Log segment.
@@ -134,7 +140,7 @@ public class JournalSegment implements AutoCloseable {
    */
   MappedJournalSegmentReader createReader() {
     checkOpen();
-    return new MappedJournalSegmentReader<>(file, this, maxEntrySize, index);
+    return new MappedJournalSegmentReader(file, this, maxEntrySize, index);
   }
 
   private MappedJournalSegmentWriter createWriter(
@@ -169,12 +175,12 @@ public class JournalSegment implements AutoCloseable {
   @Override
   public void close() {
     writer.close();
-    readers.forEach(JournalReader::close);
+    readers.forEach(MappedJournalSegmentReader::close);
     open = false;
   }
 
   void compactIndex(final long index) {
-    this.index.compact(index);
+    this.index.deleteUntil(index);
   }
 
   /** Deletes the segment. */

@@ -11,6 +11,8 @@ public interface JournalRecord {
    */
   long index();
 
+  long asqn();
+
   /**
    * Checksum of the data
    *

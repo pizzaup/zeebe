@@ -5,12 +5,12 @@ import io.zeebe.journal.JournalRecord;
 public interface JournalIndex {
 
   /**
-   * Adds an entry for the given index at the given position.
+   * Indexes the record and its position with in a segment
    *
-   * @param indexed the indexed entry for which to add the entry
+   * @param record the record that should be indexed
    * @param position the position of the given index
    */
-  void index(JournalRecord indexed, int position);
+  void index(JournalRecord record, int position);
 
   /**
    * Looks up the position of the given index.
@@ -18,15 +18,22 @@ public interface JournalIndex {
    * @param index the index to lookup
    * @return the position of the given index or a lesser index
    */
-  int lookup(long index);
+  IndexInfo lookup(long index);
 
   /**
-   * Truncates the index to the given index, which means everything higher will be removed from the
-   * index
+   * Looka up the index for the given application sequence number.
    *
-   * @param index the index to which to truncate the index
+   * @param asqn
+   * @return the index of a record with asqn less than or equal to the given asqn.
    */
-  void truncate(long index);
+  Long lookupAsqn(long asqn);
+
+  /**
+   * Delete all entries after the given index.
+   *
+   * @param indexExclusive the index after which to be deleted
+   */
+  void deleteAfter(long indexExclusive);
 
   /**
    * Compacts the index until the next stored index (exclusively), which means everything lower then
@@ -36,7 +43,7 @@ public interface JournalIndex {
    * lower stored index is 10, everything lower then this index will be removed. This means the
    * mapping {5 -> 10}, should be removed.
    *
-   * @param index the index to which to compact the index
+   * @param indexExclusive the index to which to compact the index
    */
-  void compact(long index);
+  void deleteUntil(long indexExclusive);
 }

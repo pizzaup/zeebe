@@ -4,7 +4,11 @@ import org.agrona.DirectBuffer;
 
 public interface Journal {
 
+  /**
+   * Use this for records that do not have a specific applicationSqNum.
+   */
   long ASQN_IGNORE = -1L;
+
   /**
    * Appends a new {@link JournalRecord} that contains data. applicationSqNum is a sequence number
    * provided by the application. If applicationSqNum is not equal to ASQN_IGNORE, it must be

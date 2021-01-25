@@ -5,27 +5,24 @@ import static com.google.common.base.Preconditions.checkNotNull;
 
 import java.io.File;
 
-/**
- * Raft log builder.
- */
+/** Raft log builder. */
 public class SegmentedJournalBuilder {
 
   private static final String DEFAULT_NAME = "atomix";
   private static final String DEFAULT_DIRECTORY = System.getProperty("user.dir");
   private static final int DEFAULT_MAX_SEGMENT_SIZE = 1024 * 1024 * 32;
   private static final int DEFAULT_MAX_ENTRY_SIZE = 1024 * 1024;
-  private static final int DEFAULT_MAX_ENTRIES_PER_SEGMENT = 1024 * 1024;
   private static final long DEFAULT_MIN_FREE_DISK_SPACE = 1024L * 1024 * 1024 * 1;
   protected String name = DEFAULT_NAME;
   protected File directory = new File(DEFAULT_DIRECTORY);
   protected int maxSegmentSize = DEFAULT_MAX_SEGMENT_SIZE;
   protected int maxEntrySize = DEFAULT_MAX_ENTRY_SIZE;
-  protected int maxEntriesPerSegment = DEFAULT_MAX_ENTRIES_PER_SEGMENT;
 
   private long freeDiskSpace = DEFAULT_MIN_FREE_DISK_SPACE;
+  private final JournalIndex journalIndex =
+      new SparseJournalIndex(100); // TODO: take default density from config
 
-  protected SegmentedJournalBuilder() {
-  }
+  protected SegmentedJournalBuilder() {}
 
   /**
    * Sets the storage name.
@@ -68,10 +65,9 @@ public class SegmentedJournalBuilder {
   /**
    * Sets the maximum segment size in bytes, returning the builder for method chaining.
    *
-   * <p>The maximum segment size dictates when logs should roll over to new segments. As entries
-   * are written to a segment of the log, once the size of the segment surpasses the configured
-   * maximum segment size, the log will create a new segment and append new entries to that
-   * segment.
+   * <p>The maximum segment size dictates when logs should roll over to new segments. As entries are
+   * written to a segment of the log, once the size of the segment surpasses the configured maximum
+   * segment size, the log will create a new segment and append new entries to that segment.
    *
    * <p>By default, the maximum segment size is {@code 1024 * 1024 * 32}.
    *
@@ -115,11 +111,6 @@ public class SegmentedJournalBuilder {
 
   public SegmentedJournal build() {
     return new SegmentedJournal(
-        name,
-        directory,
-        maxSegmentSize,
-        maxEntrySize,
-        maxEntriesPerSegment,
-        freeDiskSpace);
+        name, directory, maxSegmentSize, maxEntrySize, freeDiskSpace, journalIndex);
   }
 }

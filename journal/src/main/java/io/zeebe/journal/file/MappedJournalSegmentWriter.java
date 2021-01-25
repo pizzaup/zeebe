@@ -76,7 +76,8 @@ class MappedJournalSegmentWriter {
     }
   }
 
-  public JournalRecord append(final DirectBuffer data) {
+  public JournalRecord append(final long asqn, final DirectBuffer data) {
+    // TODO: Use asqn
     // Store the entry index.
     final long index = getNextIndex();
 
@@ -153,7 +154,7 @@ class MappedJournalSegmentWriter {
     lastEntry = null;
 
     // Truncate the index.
-    this.index.truncate(index);
+    this.index.deleteAfter(index);
 
     if (index < segment.index()) {
       buffer.position(JournalSegmentDescriptor.BYTES);

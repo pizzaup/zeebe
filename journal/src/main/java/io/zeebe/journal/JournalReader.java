@@ -34,4 +34,6 @@ public interface JournalReader extends Iterator<JournalRecord> {
    *     than or equal to the given applicationSqNum.
    */
   boolean seekToApplicationSqNum(long applicationSqNum);
+
+  void close();
 }
