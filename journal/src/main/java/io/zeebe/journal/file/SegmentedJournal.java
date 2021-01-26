@@ -118,6 +118,7 @@ public class SegmentedJournal implements Journal {
         compactSegments.clear();
       }
     }
+    resetHead(getFirstSegment().index());
   }
 
   @Override
@@ -141,7 +142,7 @@ public class SegmentedJournal implements Journal {
 
   @Override
   public boolean isEmpty() {
-    return false; // TODO:
+    return writer.getNextIndex() - getFirstSegment().index() == 0;
   }
 
   @Override
@@ -262,12 +263,6 @@ public class SegmentedJournal implements Journal {
    */
   JournalSegment resetSegments(final long index) {
     assertOpen();
-
-    // If the index already equals the first segment index, skip the reset.
-    final JournalSegment firstSegment = getFirstSegment();
-    if (index == firstSegment.index()) {
-      return firstSegment;
-    }
 
     for (final JournalSegment segment : segments.values()) {
       segment.close();
@@ -527,7 +522,7 @@ public class SegmentedJournal implements Journal {
    */
   void resetHead(final long index) {
     for (final SegmentedJournalReader reader : readers) {
-      if (reader.getNextIndex() < index) {
+      if (reader.getNextIndex() <= index) {
         reader.seek(index);
       }
     }

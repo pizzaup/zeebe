@@ -22,6 +22,8 @@ import io.atomix.utils.serializer.Namespaces;
 import io.zeebe.journal.JournalRecord;
 import io.zeebe.journal.file.StorageException.InvalidChecksum;
 import java.nio.BufferOverflowException;
+import java.nio.BufferUnderflowException;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.util.zip.CRC32;
 import org.agrona.DirectBuffer;
@@ -102,7 +104,7 @@ class MappedJournalSegmentWriter {
     try {
       NAMESPACE.serialize(recordToWrite, buffer);
     } catch (final KryoException e) {
-      throw e;
+      throw new BufferOverflowException();
     }
 
     final int length = buffer.position() - (position + Integer.BYTES);
@@ -182,8 +184,53 @@ class MappedJournalSegmentWriter {
   }
 
   private void reset(final long index) {
+    long nextIndex = firstIndex;
+
+    // Clear the buffer indexes.
     buffer.position(JournalSegmentDescriptor.BYTES);
-    // TODO
+
+    // Read the entry length.
+    buffer.mark();
+
+    try {
+      int length = buffer.getInt();
+
+      // If the length is non-zero, read the entry.
+      while (0 < length && length <= maxEntrySize && (index == 0 || nextIndex <= index)) {
+        final var position = buffer.position();
+        // If the buffer length is zero then return.
+        if (length <= 0 || length > maxEntrySize) {
+          buffer.reset();
+          return;
+        }
+
+        // Compute the checksum for the record bytes.
+        final CRC32 crc32 = new CRC32();
+        final ByteBuffer slice = buffer.slice();
+        slice.limit(length);
+
+        // If the stored checksum equals the computed checksum, return the record.
+        slice.rewind();
+        final PersistedJournalRecord record = NAMESPACE.deserialize(slice);
+        final var checksum = record.checksum();
+        final var expectedChecksum = computeChecksum(record.data());
+        if (checksum != expectedChecksum || nextIndex != record.index()) {
+          buffer.reset();
+          return;
+        }
+        lastEntry = record;
+        nextIndex++;
+        buffer.position(position + length);
+
+        buffer.mark();
+        length = buffer.getInt();
+      }
+
+      // Reset the buffer to the previous mark.
+      buffer.reset();
+    } catch (final BufferUnderflowException e) {
+      buffer.reset();
+    }
   }
 
   public void truncate(final long index) {

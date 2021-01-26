@@ -74,8 +74,8 @@ public class SegmentedJournalWriter {
   }
 
   public void reset(final long index) {
-      currentSegment = journal.resetSegments(index);
-      currentWriter = currentSegment.writer();
+    currentSegment = journal.resetSegments(index);
+    currentWriter = currentSegment.writer();
     journal.resetHead(index);
   }
 
@@ -92,6 +92,7 @@ public class SegmentedJournalWriter {
           // Truncate the current index.
           currentWriter.truncate(index);
 
+          currentWriter.truncate(index);
           // Reset segment readers.
           journal.resetTail(index + 1);
         });

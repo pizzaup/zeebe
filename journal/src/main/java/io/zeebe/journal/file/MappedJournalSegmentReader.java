@@ -126,7 +126,7 @@ class MappedJournalSegmentReader implements JournalReader {
       next();
     }
 
-    return nextEntry != null & nextEntry.index() == index;
+    return nextEntry != null && nextEntry.index() == index;
   }
 
   @Override
@@ -168,11 +168,8 @@ class MappedJournalSegmentReader implements JournalReader {
         return;
       }
 
-      // Compute the checksum for the record bytes.
-      final CRC32 crc32 = new CRC32();
       final ByteBuffer slice = buffer.slice();
       slice.limit(length);
-      crc32.update(slice);
 
       // If the stored checksum equals the computed checksum, return the record.
       slice.rewind();
