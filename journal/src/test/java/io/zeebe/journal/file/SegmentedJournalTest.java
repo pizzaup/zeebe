@@ -1,8 +1,13 @@
+/*
+ * Copyright Camunda Services GmbH and/or licensed to Camunda Services GmbH under
+ * one or more contributor license agreements. See the NOTICE file distributed
+ * with this work for additional information regarding copyright ownership.
+ * Licensed under the Zeebe Community License 1.0. You may not use this file
+ * except in compliance with the Zeebe Community License 1.0.
+ */
 package io.zeebe.journal.file;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Namespaces;
@@ -222,7 +227,7 @@ public class SegmentedJournalTest {
 
     int readerIndex;
     for (readerIndex = 1; readerIndex <= truncateIndex; readerIndex++) {
-      assertTrue(reader.hasNext());
+      assertThat(reader.hasNext()).isTrue();
       final var record = reader.next();
       assertThat(record.index()).isEqualTo(readerIndex);
       assertThat(record.asqn()).isEqualTo(written.get(readerIndex).asqn());
@@ -238,7 +243,7 @@ public class SegmentedJournalTest {
     }
 
     for (; readerIndex <= totalWrites; readerIndex++) {
-      assertTrue(reader.hasNext());
+      assertThat(reader.hasNext()).isTrue();
       final var record = reader.next();
       assertThat(record.index()).isEqualTo(readerIndex);
       assertThat(record.asqn()).isEqualTo(written.get(readerIndex).asqn());
@@ -252,16 +257,16 @@ public class SegmentedJournalTest {
     long asqn = 1;
 
     for (int i = 1; i <= entriesPerSegment * 5; i++) {
-      assertEquals(i, journal.append(asqn++, data).index());
+      assertThat(journal.append(asqn++, data).index()).isEqualTo(i);
     }
-    assertTrue(reader.hasNext());
+    assertThat(reader.hasNext()).isTrue();
 
-    // when - compact upto the first index of segment 3
+    // when - compact up to the first index of segment 3
     final int indexToCompact = entriesPerSegment * 2 + 1;
     journal.deleteUntil(indexToCompact);
 
     // then
-    assertTrue(reader.hasNext());
-    assertEquals(indexToCompact, reader.next().index());
+    assertThat(reader.hasNext()).isTrue();
+    assertThat(reader.next().index()).isEqualTo(indexToCompact);
   }
 }

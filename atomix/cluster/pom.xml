@@ -92,7 +92,11 @@
       <groupId>net.jodah</groupId>
       <scope>test</scope>
     </dependency>
-
+    <dependency>
+      <artifactId>junit</artifactId>
+      <groupId>junit</groupId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <artifactId>mockito-core</artifactId>
       <groupId>org.mockito</groupId>
