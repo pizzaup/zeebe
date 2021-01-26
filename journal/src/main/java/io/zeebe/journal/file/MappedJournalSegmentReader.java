@@ -16,21 +16,38 @@
  */
 package io.zeebe.journal.file;
 
+import io.atomix.utils.serializer.Namespace;
+import io.atomix.utils.serializer.Namespaces;
 import io.zeebe.journal.JournalReader;
 import io.zeebe.journal.JournalRecord;
+import java.nio.BufferUnderflowException;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel.MapMode;
 import java.util.NoSuchElementException;
+import java.util.zip.CRC32;
+import org.agrona.DirectBuffer;
 import org.agrona.IoUtil;
+import org.agrona.concurrent.UnsafeBuffer;
 
 /** Log segment reader. */
 class MappedJournalSegmentReader implements JournalReader {
+
+  private static final Namespace NAMESPACE =
+      new Namespace.Builder()
+          .register(Namespaces.BASIC)
+          .nextId(Namespaces.BEGIN_USER_CUSTOM_ID)
+          .register(PersistedJournalRecord.class)
+          .register(UnsafeBuffer.class)
+          .name("Journal")
+          .build();
   private final MappedByteBuffer buffer;
   private final int maxEntrySize;
   private final JournalIndex index;
   private final JournalSegment segment;
   private JournalRecord currentEntry;
   private JournalRecord nextEntry;
+  private final CRC32 crc32 = new CRC32();
 
   MappedJournalSegmentReader(
       final JournalSegmentFile file,
@@ -137,16 +154,51 @@ class MappedJournalSegmentReader implements JournalReader {
     // Compute the index of the next entry in the segment.
     final long index = getNextIndex();
 
-    final var nextRecordPosition = buffer.position();
+    // Mark the buffer so it can be reset if necessary.
+    buffer.mark();
 
     try {
-      final JournalRecordImpl record = new JournalRecordImpl(buffer, buffer.position());
-      buffer.position(record.size());
+      // Read the length of the record.
+      final int length = buffer.getInt();
+
+      // If the buffer length is zero then return.
+      if (length <= 0 || length > maxEntrySize) {
+        buffer.reset();
+        nextEntry = null;
+        return;
+      }
+
+      // Compute the checksum for the record bytes.
+      final CRC32 crc32 = new CRC32();
+      final ByteBuffer slice = buffer.slice();
+      slice.limit(length);
+      crc32.update(slice);
+
+      // If the stored checksum equals the computed checksum, return the record.
+      slice.rewind();
+      final PersistedJournalRecord record = NAMESPACE.deserialize(slice);
+      final var checksum = record.checksum();
+      final var expectedChecksum = computeChecksum(record.data());
+      if (checksum != expectedChecksum || index != record.index()) {
+        nextEntry = null;
+        buffer.reset();
+        return;
+      }
       nextEntry = record;
-    } catch (final Exception e) {
-      buffer.position(nextRecordPosition);
-      throw e;
+      buffer.position(buffer.position() + length);
+
+    } catch (final BufferUnderflowException e) {
+      buffer.reset();
+      nextEntry = null;
     }
+  }
+
+  private int computeChecksum(final DirectBuffer data) {
+    final byte[] slice = new byte[data.capacity()];
+    data.getBytes(0, slice);
+    crc32.reset();
+    crc32.update(slice);
+    return (int) crc32.getValue();
   }
 
   long getCurrentIndex() {

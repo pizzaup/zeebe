@@ -16,18 +16,29 @@
  */
 package io.zeebe.journal.file;
 
+import com.esotericsoftware.kryo.KryoException;
+import io.atomix.utils.serializer.Namespace;
+import io.atomix.utils.serializer.Namespaces;
 import io.zeebe.journal.JournalRecord;
-import java.nio.ByteBuffer;
+import io.zeebe.journal.file.StorageException.InvalidChecksum;
+import java.nio.BufferOverflowException;
 import java.nio.MappedByteBuffer;
 import java.util.zip.CRC32;
 import org.agrona.DirectBuffer;
 import org.agrona.IoUtil;
+import org.agrona.concurrent.UnsafeBuffer;
 
-/**
- * Segment writer.
- */
+/** Segment writer. */
 class MappedJournalSegmentWriter {
 
+  private static final Namespace NAMESPACE =
+      new Namespace.Builder()
+          .register(Namespaces.BASIC)
+          .nextId(Namespaces.BEGIN_USER_CUSTOM_ID)
+          .register(PersistedJournalRecord.class)
+          .register(UnsafeBuffer.class)
+          .name("Journal")
+          .build();
   private final MappedByteBuffer buffer;
   private final JournalSegment segment;
   private final int maxEntrySize;
@@ -76,34 +87,49 @@ class MappedJournalSegmentWriter {
   public JournalRecord append(final long asqn, final DirectBuffer data) {
     // Store the entry index.
     final long index = getNextIndex();
-    final int length = data.capacity();
+
+    // Serialize the entry.
+    final int position = buffer.position();
+    if (position + Integer.BYTES + Integer.BYTES > buffer.limit()) {
+      throw new BufferOverflowException();
+    }
+
+    buffer.position(position + Integer.BYTES);
+    final var checksum = computeChecksum(data);
+
+    final var recordToWrite = new PersistedJournalRecord(index, asqn, checksum, data);
+
+    try {
+      NAMESPACE.serialize(recordToWrite, buffer);
+    } catch (final KryoException e) {
+      throw e;
+    }
+
+    final int length = buffer.position() - (position + Integer.BYTES);
 
     // If the entry length exceeds the maximum entry size then throw an exception.
     if (length > maxEntrySize) {
+      // Just reset the buffer. There's no need to zero the bytes since we haven't written the
+      // length or checksum.
+      buffer.position(position);
       throw new StorageException.TooLarge(
           "Entry size " + length + " exceeds maximum allowed bytes (" + maxEntrySize + ")");
     }
 
-    // Update the last entry with the correct index/term/length.
-    final JournalRecordImpl record = new JournalRecordImpl(index, asqn, -1, data);
-    final int recordPosition = buffer.position();
+    // Create a single byte[] in memory for the entire entry and write it as a batch to the
+    // underlying buffer.
+    buffer.position(position);
+    buffer.putInt(length);
+    buffer.position(position + Integer.BYTES + length);
 
-    // write record
-    record.writeTo(buffer);
-    // write checksum
-    buffer.position(recordPosition);
-    record.writeChecksum(buffer, this::computeChecksum);
-    // update position
-    buffer.position(recordPosition + record.size());
-    lastEntry = new JournalRecordImpl(buffer, recordPosition);
-    this.index.index(lastEntry, recordPosition);
-    buffer.position(recordPosition);
-    return  lastEntry;
+    lastEntry = recordToWrite;
+    this.index.index(lastEntry, position);
+    return lastEntry;
   }
 
-  private int computeChecksum(final ByteBuffer buffer, final int length) {
-    final ByteBuffer slice = buffer.slice();
-    slice.limit(length);
+  private int computeChecksum(final DirectBuffer data) {
+    final byte[] slice = new byte[data.capacity()];
+    data.getBytes(0, slice);
     crc32.reset();
     crc32.update(slice);
     return (int) crc32.getValue();
@@ -117,9 +143,42 @@ class MappedJournalSegmentWriter {
       throw new IndexOutOfBoundsException("Entry index is not sequential");
     }
 
-    // TODO: Validate checksum
-    new JournalRecordImpl(record.index(), record.asqn(), record.checksum(), record.data())
-        .writeTo(buffer);
+    final int position = buffer.position();
+    if (position + Integer.BYTES + Integer.BYTES > buffer.limit()) {
+      throw new BufferOverflowException();
+    }
+
+    buffer.position(position + Integer.BYTES);
+    final var checksum = computeChecksum(record.data());
+
+    if (checksum != record.checksum()) {
+      throw new InvalidChecksum("Checksum invalid for record " + record);
+    }
+    try {
+      NAMESPACE.serialize(record, buffer);
+    } catch (final KryoException e) {
+      throw new BufferOverflowException();
+    }
+
+    final int length = buffer.position() - (position + Integer.BYTES);
+
+    // If the entry length exceeds the maximum entry size then throw an exception.
+    if (length > maxEntrySize) {
+      // Just reset the buffer. There's no need to zero the bytes since we haven't written the
+      // length or checksum.
+      buffer.position(position);
+      throw new StorageException.TooLarge(
+          "Entry size " + length + " exceeds maximum allowed bytes (" + maxEntrySize + ")");
+    }
+
+    // Create a single byte[] in memory for the entire entry and write it as a batch to the
+    // underlying buffer.
+    buffer.position(position);
+    buffer.putInt(length);
+    buffer.position(position + Integer.BYTES + length);
+
+    lastEntry = record;
+    index.index(lastEntry, position);
   }
 
   private void reset(final long index) {
