@@ -28,7 +28,7 @@ import java.nio.file.StandardOpenOption;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public final class JournalSegmentFile {
+final class JournalSegmentFile {
   private static final char PART_SEPARATOR = '-';
   private static final char EXTENSION_SEPARATOR = '.';
   private static final String EXTENSION = "log";

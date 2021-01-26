@@ -19,7 +19,7 @@ import io.zeebe.journal.JournalRecord;
 import org.agrona.DirectBuffer;
 
 /** Journal Record */
-public class PersistedJournalRecord implements JournalRecord {
+class PersistedJournalRecord implements JournalRecord {
 
   private final DirectBuffer data;
   private final long index;

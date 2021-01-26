@@ -18,7 +18,7 @@ package io.zeebe.journal.file;
 import io.prometheus.client.Gauge;
 import io.prometheus.client.Histogram;
 
-public class JournalMetrics {
+class JournalMetrics {
   private static final String NAMESPACE = "atomix";
   private static final String PARTITION_LABEL = "partition";
   private static final Histogram SEGMENT_CREATION_TIME =

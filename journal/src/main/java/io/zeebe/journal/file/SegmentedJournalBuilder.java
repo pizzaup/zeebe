@@ -35,8 +35,7 @@ public class SegmentedJournalBuilder {
   protected int maxEntrySize = DEFAULT_MAX_ENTRY_SIZE;
 
   private long freeDiskSpace = DEFAULT_MIN_FREE_DISK_SPACE;
-  private final JournalIndex journalIndex =
-      new SparseJournalIndex(100); // TODO: take default density from config
+  private int journalIndexDensity = 100;
 
   protected SegmentedJournalBuilder() {}
 
@@ -125,8 +124,18 @@ public class SegmentedJournalBuilder {
     return this;
   }
 
+  public SegmentedJournalBuilder withJournalIndexDensity(final int journalIndexDensity) {
+    this.journalIndexDensity = journalIndexDensity;
+    return this;
+  }
+
   public SegmentedJournal build() {
     return new SegmentedJournal(
-        name, directory, maxSegmentSize, maxEntrySize, freeDiskSpace, journalIndex);
+        name,
+        directory,
+        maxSegmentSize,
+        maxEntrySize,
+        freeDiskSpace,
+        new SparseJournalIndex(journalIndexDensity));
   }
 }

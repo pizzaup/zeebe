@@ -20,8 +20,7 @@ import io.zeebe.journal.JournalRecord;
 import java.nio.BufferOverflowException;
 import org.agrona.DirectBuffer;
 
-/** Raft log writer. */
-public class SegmentedJournalWriter {
+class SegmentedJournalWriter {
   private final SegmentedJournal journal;
   private final JournalMetrics journalMetrics;
   private JournalSegment currentSegment;

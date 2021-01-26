@@ -20,7 +20,7 @@ import io.zeebe.journal.JournalReader;
 import io.zeebe.journal.JournalRecord;
 import java.util.NoSuchElementException;
 
-public class SegmentedJournalReader implements JournalReader {
+class SegmentedJournalReader implements JournalReader {
 
   private final SegmentedJournal journal;
   private JournalSegment currentSegment;
@@ -115,7 +115,29 @@ public class SegmentedJournalReader implements JournalReader {
 
   @Override
   public boolean seekToApplicationSqNum(final long applicationSqNum) {
-    // TODO:
+    final var journalIndex = journal.getJournalIndex();
+    final var index = journalIndex.lookupAsqn(applicationSqNum);
+    if (index == null) {
+      // No index found - so seek to first
+      seekToFirst();
+    } else {
+      seek(index);
+    }
+
+    JournalRecord record = null;
+    while (hasNext()) {
+      final var currentRecord = next();
+      if (currentRecord.asqn() <= applicationSqNum) {
+        record = currentRecord;
+      } else if (currentRecord.asqn() >= applicationSqNum) {
+        break;
+      }
+    }
+    if (record != null && record.asqn() <= applicationSqNum) {
+      // This is needed so that the next() returns the correct record
+      // TODO: Remove the duplicate seek. See issue (@)
+      return seek(record.index());
+    }
     return false;
   }
 

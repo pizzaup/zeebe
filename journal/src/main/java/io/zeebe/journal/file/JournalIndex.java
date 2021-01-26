@@ -17,7 +17,7 @@ package io.zeebe.journal.file;
 
 import io.zeebe.journal.JournalRecord;
 
-public interface JournalIndex {
+interface JournalIndex {
 
   /**
    * Indexes the record and its position with in a segment

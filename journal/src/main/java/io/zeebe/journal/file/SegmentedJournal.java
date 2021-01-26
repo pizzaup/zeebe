@@ -547,4 +547,8 @@ public class SegmentedJournal implements Journal {
   public JournalMetrics getJournalMetrics() {
     return journalMetrics;
   }
+
+  public JournalIndex getJournalIndex() {
+    return journalIndex;
+  }
 }

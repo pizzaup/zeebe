@@ -15,7 +15,7 @@
  */
 package io.zeebe.journal.file;
 
-public class IndexInfo {
+class IndexInfo {
   private final long index;
   private final int position;
 

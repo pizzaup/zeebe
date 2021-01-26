@@ -23,8 +23,6 @@ import io.zeebe.journal.JournalRecord;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,11 +60,8 @@ public class SegmentedJournalTest {
         SegmentedJournal.builder()
             .withDirectory(directory.resolve("data").toFile())
             .withMaxSegmentSize(entriesPerSegment * entrySize + JournalSegmentDescriptor.BYTES)
+            .withJournalIndexDensity(5)
             .build();
-  }
-
-  static Stream<Integer> entrySizeProvider() {
-    return IntStream.range(1, 16).boxed();
   }
 
   @Test
@@ -276,5 +271,47 @@ public class SegmentedJournalTest {
     // then
     assertThat(reader.hasNext()).isTrue();
     assertThat(reader.next().index()).isEqualTo(indexToCompact);
+  }
+
+  @Test
+  public void shouldSeekToIndex() {
+    // given
+    final var reader = journal.openReader();
+    long asqn = 1;
+    JournalRecord lastRecordWritten = null;
+    for (int i = 1; i <= entriesPerSegment * 2; i++) {
+      final JournalRecord record = journal.append(asqn++, data);
+      assertThat(record.index()).isEqualTo(i);
+      lastRecordWritten = record;
+    }
+    assertThat(reader.hasNext()).isTrue();
+
+    // when - compact up to the first index of segment 3
+    reader.seek(lastRecordWritten.index() - 1);
+
+    // then
+    assertThat(reader.hasNext()).isTrue();
+    assertThat(reader.next().index()).isEqualTo(lastRecordWritten.index() - 1);
+  }
+
+  @Test
+  public void shouldSeekToAsqn() {
+    // given
+    final var reader = journal.openReader();
+    long asqn = 10;
+    JournalRecord lastRecordWritten = null;
+    for (int i = 1; i <= entriesPerSegment * 2; i++) {
+      final JournalRecord record = journal.append(asqn++, data);
+      assertThat(record.index()).isEqualTo(i);
+      lastRecordWritten = record;
+    }
+    assertThat(reader.hasNext()).isTrue();
+
+    // when
+    reader.seekToApplicationSqNum(lastRecordWritten.asqn() - 2);
+
+    // then
+    assertThat(reader.hasNext()).isTrue();
+    assertThat(reader.next().asqn()).isEqualTo(lastRecordWritten.asqn() - 2);
   }
 }

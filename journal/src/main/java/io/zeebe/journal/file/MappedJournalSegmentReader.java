@@ -18,7 +18,6 @@ package io.zeebe.journal.file;
 
 import io.atomix.utils.serializer.Namespace;
 import io.atomix.utils.serializer.Namespaces;
-import io.zeebe.journal.JournalReader;
 import io.zeebe.journal.JournalRecord;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
@@ -31,7 +30,7 @@ import org.agrona.IoUtil;
 import org.agrona.concurrent.UnsafeBuffer;
 
 /** Log segment reader. */
-class MappedJournalSegmentReader implements JournalReader {
+class MappedJournalSegmentReader {
 
   private static final Namespace NAMESPACE =
       new Namespace.Builder()
@@ -71,16 +70,14 @@ class MappedJournalSegmentReader implements JournalReader {
     return nextEntry;
   }
 
-  @Override
   public boolean hasNext() {
     // If the next entry is null, check whether a next entry exists.
     if (nextEntry == null) {
-      readNext();
+      readNext(getNextIndex());
     }
     return nextEntry != null;
   }
 
-  @Override
   public JournalRecord next() {
     if (!hasNext()) {
       throw new NoSuchElementException();
@@ -93,7 +90,7 @@ class MappedJournalSegmentReader implements JournalReader {
     nextEntry = null;
 
     // Read the next entry in the segment.
-    readNext();
+    readNext(getNextIndex());
 
     // Return the current entry.
     return currentEntry;
@@ -103,10 +100,9 @@ class MappedJournalSegmentReader implements JournalReader {
     buffer.position(JournalSegmentDescriptor.BYTES);
     currentEntry = null;
     nextEntry = null;
-    readNext();
+    readNext(getNextIndex());
   }
 
-  @Override
   public boolean seek(final long index) {
     final long firstIndex = segment.index();
     final long lastIndex = segment.lastIndex();
@@ -119,7 +115,7 @@ class MappedJournalSegmentReader implements JournalReader {
       buffer.position(position.position());
 
       nextEntry = null;
-      readNext();
+      readNext(position.index());
     }
 
     while (getNextIndex() < index && hasNext()) {
@@ -129,15 +125,29 @@ class MappedJournalSegmentReader implements JournalReader {
     return nextEntry != null && nextEntry.index() == index;
   }
 
-  @Override
-  public void seekToFirst() {}
-
-  @Override
-  public void seekToLast() {}
-
-  @Override
   public boolean seekToApplicationSqNum(final long applicationSqNum) {
-    return false;
+    reset();
+    final var index = this.index.lookupAsqn(applicationSqNum);
+    if (index != null) {
+      final long firstIndex = segment.index();
+      final long lastIndex = segment.lastIndex();
+      final var position = this.index.lookup(index - 1);
+      if (position != null && position.index() >= firstIndex && position.index() <= lastIndex) {
+        currentEntry = null;
+        buffer.position(position.position());
+
+        nextEntry = null;
+        readNext(position.index());
+      }
+    }
+
+    if (hasNext()) {
+      do {
+        next();
+      } while (nextEntry.asqn() < applicationSqNum);
+    }
+
+    return nextEntry != null && nextEntry.asqn() <= applicationSqNum;
   }
 
   public void close() {
@@ -150,9 +160,7 @@ class MappedJournalSegmentReader implements JournalReader {
   }
 
   /** Reads the next entry in the segment. */
-  private void readNext() {
-    // Compute the index of the next entry in the segment.
-    final long index = getNextIndex();
+  private void readNext(final long expectedIndex) {
 
     // Mark the buffer so it can be reset if necessary.
     buffer.mark();
@@ -176,7 +184,7 @@ class MappedJournalSegmentReader implements JournalReader {
       final PersistedJournalRecord record = NAMESPACE.deserialize(slice);
       final var checksum = record.checksum();
       final var expectedChecksum = computeChecksum(record.data());
-      if (checksum != expectedChecksum || index != record.index()) {
+      if (checksum != expectedChecksum || expectedIndex != record.index()) {
         nextEntry = null;
         buffer.reset();
         return;

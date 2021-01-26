@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 
-public class SparseJournalIndex implements JournalIndex {
+class SparseJournalIndex implements JournalIndex {
 
   private final int density;
   private final TreeMap<Long, Integer> indexToPosition = new TreeMap<>();

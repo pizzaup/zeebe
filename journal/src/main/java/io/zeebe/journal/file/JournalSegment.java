@@ -29,7 +29,7 @@ import java.util.Set;
  *
  * @author <a href="http://github.com/kuujo">Jordan Halterman</a>
  */
-public class JournalSegment implements AutoCloseable {
+class JournalSegment implements AutoCloseable {
 
   private final JournalSegmentFile file;
   private final JournalSegmentDescriptor descriptor;
